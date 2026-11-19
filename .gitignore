@@ -1,0 +1,10 @@
+# Quartus (recriados na compilação)
+db/
+incremental_db/
+*.qws
+*.bak
+
+# ModelSim
+work/
+transcript
+*.wlf
