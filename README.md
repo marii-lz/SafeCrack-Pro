@@ -68,8 +68,6 @@ SafeCrackPro/
 │   └── output_files/              relatórios e o .sof gerado
 ├── tb/
 │   └── tb_safecrackpro_top.sv
-├── quartus/
-│   └── pin_assignments.txt
 ├── docs/                          prints da simulação
 └── README.md
 ```
@@ -154,7 +152,7 @@ Com 50 MHz são 250 milhões de ciclos pro verde e 150 milhões pro vermelho. No
 
 ## 5. Pinos
 
-Os pinos estão no `safecrack_pro.qsf` e também em `quartus/pin_assignments.txt`. FPGA: Cyclone IV E `EP4CE115F29C7`.
+Os pinos estão no `safecrack_pro.qsf`. FPGA: Cyclone IV E `EP4CE115F29C7`.
 
 | Sinal | Placa |
 |-------|-------|
