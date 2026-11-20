@@ -1,78 +1,71 @@
 # SafeCrack Pro
 
-Projeto da disciplina **CIN0130 - Sistemas Digitais** (CIn/UFPE, 2026.2), feito em SystemVerilog para a placa **DE2-115**.
+Projeto da disciplina **CIN0130 - Sistemas Digitais** (CIn/UFPE, 2026.2).
 
-Cofre digital de 4 dígitos (0 - 9), onde o usuário monta um dígito por vez da senha com os botões da placa, que aparecem no display de 7 segmentos da placa. A verificação ocorre em uma máquina de estados finita (FSM) e os LEDs mostram se acertou (verde) ou errou (vermelho).
+Cofre digital de 4 dígitos em SystemVerilog para a placa **DE2-115**, onde o usuário monta a senha um dígito por vez com os botões da placa. A verificação ocorre em uma máquina de estados finita (FSM) e os LEDs mostram se acertou (verde) ou errou (vermelho).
 
-## 1. Como usar
+## Vídeo
 
-A senha padrão é **1-2-3-4**. É possível alterar nos parâmetros `PASS_D0` a `PASS_D3` do módulo `safecrackpro_fsm`.
+[Assista ao vídeo do projeto no YouTube](https://youtu.be/ctupQF1Bq1I?is=0mXp30WWpVVDlVs-)
 
-Os quatro dígitos ficam em 0 e o HEX4 mostra a posição 1. Assim, ajusta-se o dígito, confirma, e passa para a posição seguinte. Após a confirmação do 4º dígito, a senha é conferida. Não existe botão de voltar: se errar um dígito já confirmado, é preciso um reset.
+## Estrutura do repositório
+
+```text
+.
+├── src/
+│   ├── safecrackpro_top.sv         # top-level: liga a FSM aos displays e LEDs
+│   ├── safecrackpro_fsm.sv         # FSM: dígitos, posição, senha e tempo dos LEDs
+│   ├── bcd_to_7segment_anodo.sv    # decodificador de 4 bits para 7 segmentos
+│   ├── safecrack_pro.qpf / .qsf    # projeto do Quartus e pinagem
+│   └── output_files/               # relatórios e .sof gerado
+├── tb/tb_safecrackpro_top.sv       # testbench
+├── docs/                           # prints da simulação
+└── README.md
+```
+
+Para abrir no Quartus, use `src/safecrack_pro.qpf`.
+
+## Como usar
+
+A senha padrão é **1-2-3-4** (parâmetros `PASS_D0` a `PASS_D3` da FSM). Após o reset, os quatro dígitos mostram 0 e o HEX4 mostra a posição 1. Ajuste o dígito, confirme e avance; ao confirmar o 4º, a senha é conferida.
 
 | Botão | Função |
 |-------|--------|
 | KEY[0] | reset assíncrono |
 | KEY[1] | confirma o dígito e avança |
-| KEY[2] | aumenta o dígito ativo |
-| KEY[3] | diminui o dígito ativo |
-
-Os botões da DE2-115 são ativos em baixo nível. O dígito faz a volta: 9 + 1 vira 0, e 0 - 1 vira 9.
+| KEY[2] | incrementa o dígito ativo (9 → 0) |
+| KEY[3] | decrementa o dígito ativo (0 → 9) |
 
 | Display | Mostra |
 |---------|--------|
-| HEX3 | 1º dígito |
-| HEX2 | 2º dígito |
-| HEX1 | 3º dígito |
-| HEX0 | 4º dígito |
-| HEX4 | posição que está sendo editada (1 a 4) |
+| HEX3, HEX2, HEX1, HEX0 | 1º, 2º, 3º e 4º dígitos |
+| HEX4 | posição em edição (1 a 4) |
 
-Resultado da tentativa:
+- **Senha correta:** os 9 LEDs verdes (`LEDG`) acendem por 5 s.
+- **Senha incorreta:** os 18 LEDs vermelhos (`LEDR`) acendem por 3 s.
+- Depois disso, os dígitos voltam a 0 e a posição volta a 1.
+- Não há retorno a um dígito confirmado; para corrigir, use o reset (que funciona em qualquer momento).
+- Segurar um botão conta como um único clique.
 
-- senha certa: os 9 LEDs verdes (`LEDG`) acendem por 5 segundos;
-- senha errada: os 18 LEDs vermelhos (`LEDR`) acendem por 3 segundos.
+## Requisitos e implementação
 
-Quando o tempo acaba, os dígitos voltam para 0, a posição volta para 1, sendo possível realizar uma nova tentativa. O reset também funciona no meio da digitação e durante os LEDs.
+| Requisito | Implementação |
+|-----------|---------------|
+| Senha de 4 dígitos (0 a 9), definida no código | Parâmetros `PASS_D0` a `PASS_D3`; dígitos guardados em `digits` (4 bits cada) |
+| Dígitos em HEX3 a HEX0 | `digits[0]` no HEX3 até `digits[3]` no HEX0, cada um com um `bcd_to_7segment_anodo` |
+| Dígito ativo no HEX4 | `current_position_idx` (0 a 3) somado a 1 no top |
+| Após o reset, tudo em 0 e 1º dígito ativo | Reset assíncrono leva a `START` e zera `digits` e a posição |
+| KEY[2] incrementa, KEY[3] decrementa, com wrap-around | Estados `INC_DIGIT` e `DEC_DIGIT` (9 → 0 e 0 → 9) |
+| KEY[1] confirma e avança; no 4º confere a senha | `INC_POSITION`; na posição 3 segue para `CHECK_PASSWORD` |
+| Sem retorno a dígito confirmado | Só `INC_POSITION` altera a posição, sempre para frente |
+| Um clique = uma ação | `btn_edge` detecta só a passagem de solto para pressionado |
+| Senha certa: LEDs verdes por 5 s | `WAIT_GREEN_LED_TIME`, contador de `GREEN_SECS * CLK_FREQ_HZ` ciclos |
+| Senha errada: LEDs vermelhos por 3 s | `WAIT_RED_LED_TIME`, contador de `RED_SECS * CLK_FREQ_HZ` ciclos |
+| Fim dos LEDs: volta ao início | A FSM zera `digits` e a posição e vai para `START` |
 
-A FSM só enxerga a **borda** do botão, então segurar um botão conta como apenas um clique. Para repetir a ação, é preciso soltar e pressionar de novo.
+Parâmetros da FSM: `CLK_FREQ_HZ` (50 MHz), `GREEN_SECS` (5), `RED_SECS` (3) e `PASS_D0` a `PASS_D3` (1, 2, 3, 4).
 
-## 2. Requisitos e como foram implementados
-
-| Requisito da especificação | Implementação |
-|----------------------------|---------------|
-| Senha de 4 dígitos (0 a 9), definida no código | Parâmetros `PASS_D0` a `PASS_D3` da FSM (padrão 1-2-3-4). Os dígitos ficam no vetor `digits`, 4 bits cada. |
-| Dígitos em HEX3 a HEX0, com HEX3 sendo o primeiro | `digits[0]` vai para o HEX3 e `digits[3]` para o HEX0, cada um por um `bcd_to_7segment_anodo` no top. |
-| Dígito ativo mostrado no HEX4 | `current_position_idx` (0 a 3) somado a 1 no top, então o HEX4 mostra de 1 a 4. |
-| Após o reset, primeiro dígito ativo e displays em 0 | O reset assíncrono (KEY[0]) leva pro `START` zerando `digits` e `current_position_idx`, de qualquer estado. |
-| KEY[3] decrementa e KEY[2] incrementa, com wrap-around | Estados `DEC_DIGIT` e `INC_DIGIT`: 0 - 1 vira 9 e 9 + 1 vira 0. |
-| KEY[1] confirma e avança; no 4º dígito confere a senha | `INC_POSITION` avança a posição. Na posição 3 (4º dígito) vai para `CHECK_PASSWORD`. |
-| Não voltar a um dígito já confirmado | Só `INC_POSITION` altera o índice e soma. Para recomeçar, apenas com reset. |
-| Um clique = uma ação | `btn_edge = btn_pos & ~btn_prev`: só conta a passagem de solto pra apertado. |
-| Senha certa: todos os LEDs verdes por 5 s e volta ao início | `WAIT_GREEN_LED_TIME` com os 9 `LEDG` acesos, contando `GREEN_SECS * CLK_FREQ_HZ` ciclos. |
-| Senha errada: LEDs vermelhos por 3 s e volta ao início | `WAIT_RED_LED_TIME` com os 18 `LEDR` acesos, contando `RED_SECS * CLK_FREQ_HZ` ciclos. |
-| Ao voltar ao início, displays em 0 e 1º dígito ativo | No fim da contagem a FSM zera `digits` e a posição e vai pro `START`. |
-
-## 3. Arquivos
-
-```text
-SafeCrackPro/
-├── .gitignore
-├── src/
-│   ├── safecrackpro_top.sv
-│   ├── safecrackpro_fsm.sv
-│   ├── bcd_to_7segment_anodo.sv
-│   ├── safecrack_pro.qpf          projeto do Quartus
-│   ├── safecrack_pro.qsf          configurações e pinos
-│   └── output_files/              relatórios e o .sof gerado
-├── tb/
-│   └── tb_safecrackpro_top.sv
-├── docs/                          prints da simulação
-└── README.md
-```
-
-Para abrir no Quartus, é preciso abrir o arquivo `src/safecrack_pro.qpf`. As pastas `db/` e `incremental_db/` ficam de fora do repositório (estão no `.gitignore`), pois o Quartus recria sozinho na sua primeira compilação.
-
-## 4. Módulos
+## Módulos
 
 **`safecrackpro_top`** é o top-level. Instancia a FSM e cinco decodificadores de 7 segmentos (quatro para os dígitos e um para a posição ativa) e liga as saídas dos LEDs. O índice da posição vai de 0 a 3, então o top soma 1 antes de mandar pro HEX4, para mostrar de 1 a 4.
 
@@ -128,29 +121,29 @@ stateDiagram-v2
     WAIT_RED_LED_TIME --> START: tempo acabou
 ```
 
-### 4.2 Detecção de clique
+**Detecção de clique:**
 
-Na FSM os botões são invertidos para trabalhar em alto nível. O valor anterior fica guardado em `btn_prev`, e o sinal `btn_edge` só vale 1 no ciclo em que o botão passa de solto para pressionado:
+Os botões (ativos em nível baixo) são invertidos, e o valor anterior fica em `btn_prev`. O sinal `btn_edge` vale 1 só no ciclo em que o botão passa de solto para pressionado:
 
 ```systemverilog
 btn_pos  = ~btn;
 btn_edge = btn_pos & ~btn_prev;
 ```
 
-No estado `CURRENT_POSITION`, a FSM só reage quando exatamente um dos três bits de `btn_edge` está ativo. Se dois botões forem apertados no mesmo ciclo, nada acontece. Nos estados `INC_DIGIT` e `DEC_DIGIT` só o dígito da posição ativa é alterado, então editar um dígito não mexe nos outros.
+Em `CURRENT_POSITION`, a FSM só reage se exatamente um bit de `btn_edge` estiver ativo. Dois botões no mesmo ciclo são ignorados.
 
-### 4.3 Tempo dos LEDs
+**Tempo dos LEDs:**
 
 ```text
 GREEN_CYCLES = GREEN_SECS * CLK_FREQ_HZ
 RED_CYCLES   = RED_SECS   * CLK_FREQ_HZ
 ```
 
-Com 50 MHz são 250 milhões de ciclos para o verde e 150 milhões para o vermelho. No `CHECK_PASSWORD` o contador é carregado com (ciclos - 1) e vai diminuindo no estado de espera. Ao chegar em zero, a FSM zera os dígitos e volta pro `START`.
+Com 50 MHz, são 250 milhões de ciclos para o verde e 150 milhões para o vermelho. Em `CHECK_PASSWORD` o contador é carregado com (ciclos - 1) e decrementa no estado de espera. Ao chegar a zero, a FSM volta a `START`.
 
-## 5. Pinos
+## Pinos
 
-Os pinos estão no `safecrack_pro.qsf`. FPGA: Cyclone IV E `EP4CE115F29C7`.
+Pinagem em `src/safecrack_pro.qsf` (Cyclone IV E `EP4CE115F29C7`):
 
 | Sinal | Placa |
 |-------|-------|
@@ -165,7 +158,7 @@ Os pinos estão no `safecrack_pro.qsf`. FPGA: Cyclone IV E `EP4CE115F29C7`.
 | `led_red[17:0]` | LEDR[17:0] |
 | `led_green[8:0]` | LEDG[8:0] |
 
-## 6. Compilação no Quartus
+## Compilação no Quartus
 
 Compilado no Quartus Prime 21.1.1 Lite, com resultado `Successful` (0 erros). O `src/output_files/safecrack_pro.flow.rpt` mostra:
 
@@ -176,33 +169,15 @@ Compilado no Quartus Prime 21.1.1 Lite, com resultado `Successful` (0 erros). O 
 | Pinos | 67 de 529 (13%) |
 | Memória, multiplicadores e PLLs | 0 |
 
-O Quartus avisa que o pino `seg_cur_pos[5]` fica preso em GND. Isso é esperado, não sendo um erro: esse bit é o segmento "b" do display, que fica sempre aceso (nível 0) nos dígitos 1, 2, 3 e 4, os únicos mostrados pelo HEX4. O Quartus só otimiza o pino para um valor fixo.
+O aviso de `seg_cur_pos[5]` preso em GND é esperado: é o segmento "b", sempre aceso nos dígitos 1 a 4, os únicos exibidos no HEX4. O arquivo de gravação é `src/output_files/safecrack_pro.sof`.
 
-Arquivo para gravar na: `src/output_files/safecrack_pro.sof`.
+## Simulação
 
-## 7. Simulação
+O testbench gera clock de 50 MHz e executa 13 grupos de teste (59 verificações): reset, incremento, decremento, wrap-around (0 → 9 e 9 → 0), senha correta, senha errada, independência dos dígitos, estabilidade sem botões, botão segurado, reset durante a digitação e durante os LEDs, botões ignorados durante os LEDs e duração dos LEDs.
 
-O testbench `tb/tb_safecrackpro_top.sv` gera um clock de 20 ns (50 MHz) e roda 13 grupos de teste, com 59 verificações no total. A tarefa `check` imprime `[PASS]` ou `[FAIL]` no Transcript:
+Simular 250 milhões de ciclos é inviável, então os testes que checam o retorno ao início usam `force` para zerar o contador. A duração real (3 s e 5 s) é verificada no teste 13, com uma segunda instância da FSM em `CLK_FREQ_HZ = 1000`, em que 1 "segundo" equivale a 1000 ciclos: os LEDs ficam acesos por 3000 e 5000 ciclos.
 
-1. reset inicial (dígitos, posição, LEDs e displays)
-2. incremento do dígito
-3. decremento do dígito
-4. volta de 0 para 9 no decremento
-5. volta de 9 para 0 no incremento
-6. senha correta 1-2-3-4
-7. senha errada
-8. independência entre os dígitos
-9. estabilidade sem apertar nenhum botão
-10. botão segurado conta como uma ação só
-11. reset no meio da digitação e durante os LEDs
-12. botões ignorados enquanto os LEDs estão acesos
-13. duração dos LEDs (3 s e 5 s)
-
-Simular 250 milhões de ciclos seria inviável, então nos testes que checam o retorno ao início o testbench usa `force` pra zerar o contador interno. Já a duração real dos LEDs (teste 13) é medida com uma segunda instância da FSM configurada com `CLK_FREQ_HZ = 1000`, em que 1 "segundo" são 1000 ciclos. Os LEDs ficam acesos por 3000 e 5000 ciclos, como esperado.
-
-### 7.1 Como rodar
-
-Usamos o ModelSim - Intel FPGA Starter Edition 2020.1. Na pasta do projeto:
+Para executar no ModelSim - Intel FPGA Starter Edition 2020.1, na raiz do projeto:
 
 ```text
 vlib work
@@ -220,45 +195,36 @@ add wave sim:/tb_safecrackpro_top/led_green
 run -all
 ```
 
-Obs.: o testbench termina com `$stop`, então a simulação para sozinha no final e a Wave continua aberta.
+O testbench termina com `$stop`, e a Wave continua aberta.
 
-### 7.2 Resultado
-
-Todas as verificações passaram: **59 / 59**.
+**Resultado:** 59 / 59 verificações passaram.
 
 ![Transcript com os testes](docs/transcript_testes.png)
 
-### 7.3 Senha correta (teste 6)
+### Formas de onda
 
-Janela de 680 ns a 2100 ns. O `digits` vai de `0000` até `4321` e a posição vai de 0 a 3. O ModelSim mostra o 4º dígito primeiro, então `4321` quer dizer 1º = 1, 2º = 2, 3º = 3 e 4º = 4. No final o `led_green` vai pra `1ff` (os 9 LEDs acesos) e depois o estado volta pra `START` com os dígitos zerados.
+Nas duas primeiras janelas, o tempo dos LEDs aparece reduzido porque o testbench pula a espera com `force`. Os pulsos em `rstn` são resets aplicados entre os testes.
+
+**Senha correta (teste 6), 680 ns a 2100 ns.** `digits` vai de `0000` a `4321` e a posição de 0 a 3. O ModelSim mostra o 4º dígito à esquerda, então `4321` significa 1º = 1, 2º = 2, 3º = 3 e 4º = 4. Em seguida `led_green` vai a `1ff` (9 LEDs) e o estado volta a `START` com os dígitos zerados.
 
 ![Senha correta](docs/wave_senha_correta.png)
 
-### 7.4 Senha errada (teste 7)
-
-Janela de 1850 ns a 2700 ns. Os dígitos ficam em `0000`, a posição vai de 0 a 3 a cada confirmação em `btn` (`110`) e o `led_red` vai pra `3ffff` (os 18 LEDs acesos). Depois o estado passa por `WAIT_RED_LED_TIME` e volta pra `START`. Ainda nesse print dá pra ver o começo do teste 8, com o `digits` subindo.
+**Senha errada (teste 7), 1850 ns a 2700 ns.** Os dígitos ficam em `0000`, e a posição avança a cada confirmação (`btn = 110`). Depois `led_red` vai a `3ffff` (18 LEDs), o estado passa por `WAIT_RED_LED_TIME` e volta a `START`. No fim da janela começa o teste 8, com `digits` subindo.
 
 ![Senha errada](docs/wave_senha_errada.png)
 
-### 7.5 Botão segurado (teste 10)
-
-Janela de 3800 ns a 8200 ns, com o `btn` em `101` (KEY[2] apertado) por 200 ciclos, cerca de 4 µs. Nesse tempo o `btn_edge[1]` dá um único pulso, logo no começo, e o `digits` vai pra `0001` uma vez só e fica parado, mesmo com o botão continuando apertado. No final do trecho, o `btn` vira `011` (KEY[3]) e o dígito volta pra `0000`, também uma vez só.
+**Botão segurado (teste 10), 3800 ns a 8200 ns.** Com `btn = 101` (KEY[2]) por 200 ciclos (cerca de 4 µs), `btn_edge[1]` dá um único pulso e `digits` vai a `0001` uma só vez. No fim, `btn = 011` (KEY[3]) faz o dígito voltar a `0000`, também uma só vez.
 
 ![Botão segurado](docs/wave_botao_segurado.png)
 
-## 8. Teste na placa
+## Teste na placa
 
-Também gravamos o projeto na DE2-115 e testamos fisicamente. O arquivo usado foi o `src/output_files/safecrack_pro.sof`.
+O projeto foi gravado na DE2-115 com o arquivo `src/output_files/safecrack_pro.sof`. No vídeo, ocorre o teste da senha correta (1-2-3-4, LEDs verdes), uma senha incorreta (2-3-4-1, LEDs vermelhos).
 
 ## 9. Limitações (known issues)
 
-São coisas que notamos lendo o código:
-
-- **Sem debounce próprio.** Detectamos a borda do botão, mas o código não tem filtro pra trepidação mecânica. A DE2-115 já trata os botões com um Schmitt trigger na própria placa, o que ajuda, mas o filtro não é feito no nosso código.
-- **Sem sincronizador nas entradas.** Os botões são assíncronos em relação ao clock e entram direto na lógica da FSM, sem os dois flip-flops em série que normalmente se usam pra evitar metaestabilidade.
-- **Botões simultâneos.** Se dois botões forem apertados no mesmo ciclo, a FSM ignora os dois.
-- **Sem voltar.** Depois de confirmar um dígito, só o reset permite corrigir (isso é o que a especificação pede, mas vale registrar).
-
+- **Botões simultâneos.** Se dois botões forem pressionados no mesmo ciclo, a FSM ignora ambos.
+- **Sem retorno a dígito confirmado.** Segue a especificação, a correção é feita pelo reset.
 ---
 
 CIN0130 - Sistemas Digitais · DE2-115 · SystemVerilog
